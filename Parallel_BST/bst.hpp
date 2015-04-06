@@ -10,27 +10,45 @@ public:
 
 	struct Node
 	{
-		Node(const K& key, const V& value) : key{ key }, value{ value } {}
-		Node(const K& key, const V& value, const std::shared_ptr<Node>& parent) : key{ key }, value{ value }, parent{ parent } {}
+		Node(std::pair<K, V> val, std::shared_ptr<Node> parent = std::shared_ptr<Node>())
+			: key{ std::move(val.first) }, value{ std::move(val.second) }, parent{ std::move(parent) } {}
 		K key;
 		V value;
 		std::shared_ptr<Node> left_child, right_child;
 		std::weak_ptr<Node> parent;
 	};
 
-	BST(const K& lb, const K& ub) : lw_bound{ lb }, up_bound{ ub } {}
+	// Ineffective if K is not MoveConstructible.
+	BST(K lb, K ub) : lw_bound{ std::move(lb) }, up_bound{ std::move(ub) } {}
 
-	void insert(const std::pair<K, V>& val) {
+	BST(const BST& other) :lw_bound{ other.lw_bound }, up_bound{ other.up_bound } {
+		deep_copy(root, other.root, std::shared_ptr<Node>());
+	}
+
+	BST(BST&& other) : lw_bound{ std::move(other.lw_bound) }, up_bound{ std::move(other.up_bound) }, root{ std::move(other.root) } {}
+
+	BST& operator=(BST other) {
+		swap(other);
+		return *this;
+	}
+
+	void swap(BST& other) {
+		std::swap(lw_bound, other.lw_bound);
+		std::swap(up_bound, other.up_bound);
+		std::swap(root, other.root);
+	}
+
+	void insert(std::pair<K, V> val) {
 		if (val.first < lw_bound || val.first >= up_bound) {
 			throw std::out_of_range("key is out of boundaries");
 		}
 		if (!root) {
-			root = std::make_shared<Node>(val.first, val.second);
+			root = std::make_shared<Node>(std::move(val));
 			return;
 		}
-		std::shared_ptr<Node> parent, child;
-		for (child = root; parent = child, child = (val.first < parent->key ? parent->left_child : parent->right_child););
-		(val.first < parent->key ? parent->left_child : parent->right_child) = std::make_shared<Node>(val.first, val.second, parent);
+		std::shared_ptr<Node> parent, child{ root };
+		while (parent = child, child = choose_child(parent,val.first));
+		choose_child(parent, val.first) = std::make_shared<Node>(std::move(val), parent);
 
 	}
 
@@ -41,10 +59,10 @@ public:
 		std::shared_ptr<Node> less{ root }, more{ root }, it{ root };
 		while (it && it->key != key) {
 			(key < it->key ? more : less) = it;
-			it = (key < it->key ? it->left_child : it->right_child);
+			it = choose_child(it, key);
 		}
 		if (it) { return it; }
-		return key - less->key < more->key - key ? less : more;
+		return key - less->key < more->key - key ? less : more; // TODO Abstract metrics
 	}
 
 	bool empty() {
@@ -56,11 +74,22 @@ public:
 
 private:
 
-	void traverse(const std::shared_ptr<Node>& root, std::ostream& out) const {
+	std::shared_ptr<Node>& choose_child(std::shared_ptr<Node> parent, const K& key) {
+		return key < parent->key ? parent->left_child : parent->right_child;
+	}
+
+	void traverse(std::shared_ptr<Node> root, std::ostream& out) const {
 		if (!root) { return; }
 		traverse(root->left_child, out);
 		out << root->value << " ";
 		traverse(root->right_child, out);
+	}
+
+	void deep_copy(std::shared_ptr<Node>& target, std::shared_ptr<const Node> source, std::shared_ptr<Node> parent) {
+		if (!source) { return; }
+		target = std::make_shared<Node>(std::make_pair(source->key, source->value), std::move(parent));
+		deep_copy(target->left_child, source->left_child, target);
+		deep_copy(target->right_child, source->right_child, target);
 	}
 
 	K lw_bound, up_bound;
