@@ -3,11 +3,16 @@
 #include <stdexcept>
 #include <iostream>
 #include <functional>
+#include <vector>
+#include <thread>
+#include <algorithm>
 
 template <class K, class V>
 class BST
 {
 private:
+
+	const int core_num = 8;
 
 	struct Node
 	{
@@ -76,12 +81,41 @@ public:
 			throw logic_error("find_nearest in empty tree");
 		}
 		Node_ptr less{ root }, more{ root }, it{ root };
-		while (it && it->key != key) {
-			(key < it->key ? more : less) = it;
+		while (it && it->key() != key) {
+			(key < it->key() ? more : less) = it;
 			it = choose_child(it, key);
 		}
 		if (it) { return it; }
-		return key - less->key < more->key - key ? less : more; // TODO Abstract metrics
+		return key - less->key() < more->key() - key ? less : more; // TODO Abstract metrics
+	}
+
+	template<class Range>
+	std::vector<typename BST::Node_ptr> find_nearest(const Range& rng) {
+		return find_nearest(rng.begin(), rng.end());
+	}
+
+	template<class InputIt>
+	std::vector<typename BST::Node_ptr> find_nearest(InputIt first, InputIt last) {
+		if (empty()) {
+			throw logic_error("find_nearest in empty tree");
+		}
+		auto size = std::distance(first, last);
+		std::vector<typename BST::Node_ptr> result(size);
+		std::vector<std::thread> threads;
+
+		for (int i = 0; i < core_num-1; i++) {
+			auto from = first;
+			std::advance(first, size/core_num);
+			threads.push_back(std::thread{
+				[=, &result]() mutable {std::transform(from, first, result.begin() + i*(size / core_num),
+														[=] (const K& key) {return find_nearest(key); }); } });
+		}
+		threads.push_back(std::thread{
+			[=, &result]() mutable {std::transform(first, last, result.begin() + (core_num-1)*(size / core_num),
+														[=] (const K& key) {return find_nearest(key); }); } });
+		
+		for (auto& t : threads) { t.join(); }
+		return result;
 	}
 
 	void swap(BST& other) {
@@ -110,7 +144,7 @@ private:
 	void traverse(Node_ptr root, std::ostream& out) const {
 		if (!root) { return; }
 		traverse(root->left_child, out);
-		print<K,V>(out,*root);
+		print<K, V>(out, *root);
 		traverse(root->right_child, out);
 	}
 
@@ -165,10 +199,10 @@ std::ostream& operator<<(std::ostream& out, const BST<K, V>& bst) {
 }
 
 template <class K, class V>
-std::ostream& print(std::ostream& out,typename BST<K,V>::Node node) {
+std::ostream& print(std::ostream& out, typename BST<K, V>::Node node) {
 	out << node.key() << " " << (node.left_child ? node.left_child->key() : -1) << " "
 		<< (node.right_child ? node.right_child->key() : -1) << " "
 		<< (node.parent.lock() ? node.parent.lock()->key() : -1) << " "
-		<< (node.red?"p":"f") << endl;
+		<< (node.red ? "p" : "f") << endl;
 	return out;
 }

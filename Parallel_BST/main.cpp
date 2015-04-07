@@ -72,5 +72,20 @@ int main() {
 	vector<int> bst_values(m_bst.begin(), m_bst.end());
 	cout << (bst_values == values);*/
 #pragma endregion
+
+#pragma region parallel find
+	BST<int, int> m_bst(0, 1000000);
+	vector<int> query(1000000);
+	for (int i = 0; i < 1000000; i++) {
+		query[i] = i;
+		m_bst.insert(make_pair(i, i));
+	}
+	auto start = chrono::high_resolution_clock::now();
+	auto result = m_bst.find_nearest(query);
+	auto end = chrono::high_resolution_clock::now();
+	auto duration = chrono::duration_cast<chrono::milliseconds>(end - start).count();
+	cout << duration << " " << result[0]->key() << endl;
+
+#pragma endregion
 	return 0;
 }
